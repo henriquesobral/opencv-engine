@@ -17,11 +17,35 @@ except ImportError:
 from colour import Color
 from thumbor.engines import BaseEngine
 from pexif import JpegFile, ExifSegment
+from types import MethodType
 import cv2
 import gdal
 import numpy
 from osgeo import osr
 
+import thumbor.utils
+thumbor.utils.CONTENT_TYPE = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.tif': 'image/tiff',
+    '.tiff': 'image/tiff',
+    '.gif': 'image/gif',
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.svg': 'image/svg+xml',
+}
+thumbor.utils.EXTENSION = {
+    'image/jpeg': '.jpg',
+    'image/tiff': '.tif',
+    'image/gif': '.gif',
+    'image/png': '.png',
+    'image/webp': '.webp',
+    'video/mp4': '.mp4',
+    'video/webm': '.webm',
+    'image/svg+xml': '.svg',
+}
 # need to monkey patch the BaseEngine.get_mimetype function to handle tiffs
 # has to be patched this way b/c called as both a classmethod and instance method internally in thumbor
 old_mime = BaseEngine.get_mimetype
