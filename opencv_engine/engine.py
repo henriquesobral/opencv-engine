@@ -129,9 +129,10 @@ class Engine(BaseEngine):
             # and if the alpha channel is all white (opaque).
             channels = None
             if hasattr(self.context, 'request') and getattr(self.context.request, 'default_to_jpeg', True):
-                channels = cv2.split(numpy.asarray(self.image))
-                if len(channels) > 3 and numpy.all(channels[3] == 255):
-                    self.extension = '.jpg'
+                if self.image_channels > 3:
+                    channels = cv2.split(numpy.asarray(self.image))
+                    if numpy.all(channels[3] == 255):
+                        self.extension = '.jpg'
 
             try:
                 if FORMATS[self.extension] == 'JPEG':
