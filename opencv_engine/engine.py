@@ -125,13 +125,13 @@ class Engine(BaseEngine):
             options = None
             self.extension = extension or self.extension
 
-            # # Check if we should write a JPEG. If we are allowing defaulting to jpeg
-            # # and if the alpha channel is all white (opaque).
-            # channels = None
-            # if hasattr(self.context, 'request') and getattr(self.context.request, 'default_to_jpeg', True):
-            #     channels = cv2.split(numpy.asarray(self.image))
-            #     if len(channels) > 3 and numpy.all(channels[3] == 255):
-            #         self.extension = '.jpg'
+            # Check if we should write a JPEG. If we are allowing defaulting to jpeg
+            # and if the alpha channel is all white (opaque).
+            channels = None
+            if hasattr(self.context, 'request') and getattr(self.context.request, 'default_to_jpeg', True):
+                channels = cv2.split(numpy.asarray(self.image))
+                if len(channels) > 3 and numpy.all(channels[3] == 255):
+                    self.extension = '.jpg'
 
             try:
                 if FORMATS[self.extension] == 'JPEG':
