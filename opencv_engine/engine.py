@@ -123,11 +123,18 @@ class Engine(BaseEngine):
                     self.exif_marker = info.marker
             except Exception:
                 pass
+
         return img0
 
     def read_tiff(self, buffer, create_alpha=True):
         """ Reads image using GDAL from a buffer, and returns a CV2 image.
         """
+
+        if hasattr(self.context, 'offset'):
+            offset = float(self.context.offset)
+        else:
+            offset = 0
+
         mem_map_name = '/vsimem/{}'.format(uuid.uuid4().get_hex())
         gdal_img = None
         try:
@@ -137,13 +144,15 @@ class Engine(BaseEngine):
             channels = [gdal_img.GetRasterBand(i).ReadAsArray() for i in range(1, gdal_img.RasterCount + 1)]
 
             if len(channels) >= 3:  # opencv is bgr not rgb.
+
                 red_channel = channels[0]
                 channels[0] = channels[2]
-                channels[2] = red_channel
+                channels[2] = red_channel + offset
 
             if len(channels) < 4 and create_alpha:
                 self.no_data_value = gdal_img.GetRasterBand(1).GetNoDataValue()
                 channels.append(numpy.float32(gdal_img.GetRasterBand(1).GetMaskBand().ReadAsArray()))
+
             return cv.fromarray(cv2.merge(channels))
         finally:
             gdal_img = None
@@ -163,6 +172,35 @@ class Engine(BaseEngine):
                 gdal.VSIFCloseL(vsifile)
 
     def write_channels_to_tiff_buffer(self, channels):
+        """
+        Writes tiff channels to buffer to be returned to user.
+
+        IMPORTANT NOTE:
+        This method will be called by the engine if one or both of the following filters are set:
+         * format(tiff)
+         * band_selector(n)
+
+        If the band_selector filter has been used, a 32-bit tiff will be returned, and it will only include the
+        specified band.
+
+        Otherwise, an 8-bit tiff will be returned.
+
+        Because of this logic, we are assuming that a user is requesting a DEM tiff if they use the
+        band_selector filter to select a single tiff channel. In the future, we may want to change our code to require
+        users to indicate whether they are requesting a DEM or an orthomosaic, since DEMs can include information on
+        more than one channel. Currently, if a user requests a DEM and specifies the format(tiff) filter, they will
+        receive an 8-bit DEM, which will have truncated values over 256 (which can be particularly problematic
+        with elevations). The only internal code that is requesting DEMs is the exporter, but it won't run into the
+        8-bit truncation issue because it is specifying format(tiff) and band_selector(0).
+
+        Args:
+            channels: tiff channels.
+
+        Returns:
+            gdal image buffer containing data in channels.
+
+        """
+
         mem_map_name = '/vsimem/{}.tiff'.format(uuid.uuid4().get_hex())
         driver = gdal.GetDriverByName('GTiff')
         w, h = channels[0].shape
