@@ -147,6 +147,8 @@ class Engine(BaseEngine):
 
                 red_channel = channels[0]
                 channels[0] = channels[2]
+                # Offset is z-offset to the elevation value
+                # If it's set, we are reading a DEM tiff, which stores its elevation data in channels[2]
                 channels[2] = red_channel + offset
 
             if len(channels) < 4 and create_alpha:
