@@ -130,10 +130,7 @@ class Engine(BaseEngine):
         """ Reads image using GDAL from a buffer, and returns a CV2 image.
         """
 
-        if hasattr(self.context, 'offset'):
-            offset = float(self.context.offset)
-        else:
-            offset = 0
+        offset = float(getattr(self.context, 'offset', 0.0)) or 0
 
         mem_map_name = '/vsimem/{}'.format(uuid.uuid4().get_hex())
         gdal_img = None
