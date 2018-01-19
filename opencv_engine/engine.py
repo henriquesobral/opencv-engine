@@ -141,12 +141,17 @@ class Engine(BaseEngine):
             channels = [gdal_img.GetRasterBand(i).ReadAsArray() for i in range(1, gdal_img.RasterCount + 1)]
 
             if len(channels) >= 3:  # opencv is bgr not rgb.
-
                 red_channel = channels[0]
                 channels[0] = channels[2]
+
                 # Offset is z-offset to the elevation value
                 # If it's set, we are reading a DEM tiff, which stores its elevation data in channels[2]
-                channels[2] = red_channel + offset
+                # We don't want to add an offset to a no-data value
+                no_data_value = None if not offset else gdal_img.GetRasterBand(1).GetNoDataValue()
+                add_offset_if_data = numpy.vectorize(
+                    lambda x: x + offset if offset and x != no_data_value else x, otypes=[numpy.float32])
+                # If there's an offset, run add_offset_if_data on numpy array, else just assign it to the proper channel
+                channels[2] = add_offset_if_data(red_channel) if offset else red_channel
 
             if len(channels) < 4 and create_alpha:
                 self.no_data_value = gdal_img.GetRasterBand(1).GetNoDataValue()
