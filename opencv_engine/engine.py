@@ -7,41 +7,17 @@
 # Licensed under the MIT license:
 # http://www.opensource.org/licenses/mit-license
 # Copyright (c) 2014 globo.com timehome@corp.globo.com
+from opencv_engine.tiff_support import TiffMixin, TIFF_FORMATS
 
-import uuid
-import cv2
 try:
     import cv
 except ImportError:
     import cv2.cv as cv
 
+from colour import Color
+
 from thumbor.engines import BaseEngine
 from pexif import JpegFile, ExifSegment
-import gdal
-import numpy
-from osgeo import osr
-
-from lib.drone_common.logger import logger
-
-# need to monkey patch the BaseEngine.get_mimetype function to handle tiffs
-# has to be patched this way b/c called as both a classmethod and instance method internally in thumbor
-old_mime = BaseEngine.get_mimetype
-
-
-def new_mime(buffer):
-    ''' determine the mime type from the raw image data
-        Args:
-            buffer - raw image data
-        Returns:
-            mime - mime type of image
-    '''
-    mime = old_mime(buffer)
-    # tif files start with 'II'
-    if not mime and buffer.startswith('II'):
-        mime = 'image/tiff'
-    return mime
-
-BaseEngine.get_mimetype = staticmethod(new_mime)
 
 try:
     from thumbor.ext.filters import _composite
@@ -53,47 +29,44 @@ FORMATS = {
     '.jpg': 'JPEG',
     '.jpeg': 'JPEG',
     '.gif': 'GIF',
-    '.png': 'PNG',
-    '.tiff': 'TIFF',
-    '.tif': 'TIFF',
+    '.png': 'PNG'
 }
 
+FORMATS.update(TIFF_FORMATS)
 
-class Engine(BaseEngine):
 
-    def read(self, extension=None, quality=None):
-        if not extension and FORMATS[self.extension] == 'TIFF':
-            # If the image loaded was a tiff, return the buffer created earlier.
-            return self.buffer
+class Engine(BaseEngine, TiffMixin):
+
+    @property
+    def image_depth(self):
+        if self.image is None:
+            return 8
+        return cv.GetImage(self.image).depth
+
+    @property
+    def image_channels(self):
+        if self.image is None:
+            return 3
+        return self.image.channels
+
+    @classmethod
+    def parse_hex_color(cls, color):
+        try:
+            color = Color(color).get_rgb()
+            return tuple(c * 255 for c in reversed(color))
+        except Exception:
+            return None
+
+    def gen_image(self, size, color_value):
+        img0 = cv.CreateImage(size, self.image_depth, self.image_channels)
+        if color_value == 'transparent':
+            color = (255, 255, 255, 255)
         else:
-            if quality is None:
-                quality = self.context.config.QUALITY
-            options = None
-            self.extension = extension or self.extension
-
-            try:
-                if FORMATS[self.extension] == 'JPEG':
-                    options = [cv2.IMWRITE_JPEG_QUALITY, quality]
-            except KeyError:
-                options = [cv2.IMWRITE_JPEG_QUALITY, quality]
-
-            if FORMATS[self.extension] == 'TIFF':
-                channels = cv2.split(numpy.asarray(self.image))
-                data = self.write_channels_to_tiff_buffer(channels)
-            else:
-                success, numpy_data = cv2.imencode(self.extension, numpy.asarray(self.image), options or [])
-                if success:
-                    data = numpy_data.tostring()
-                else:
-                    raise Exception("Failed to encode image")
-
-            if FORMATS[self.extension] == 'JPEG' and self.context.config.PRESERVE_EXIF_INFO:
-                if hasattr(self, 'exif'):
-                    img = JpegFile.fromString(data)
-                    img._segments.insert(0, ExifSegment(self.exif_marker, None, self.exif, 'rw'))
-                    data = img.writeString()
-
-        return data
+            color = self.parse_hex_color(color_value)
+            if not color:
+                raise ValueError('Color %s is not valid.' % color_value)
+        cv.Set(img0, color)
+        return img0
 
     def create_image(self, buffer, create_alpha=True):
         self.extension = self.extension or '.tif'
@@ -126,134 +99,6 @@ class Engine(BaseEngine):
 
         return img0
 
-    def read_tiff(self, buffer, create_alpha=True):
-        """ Reads image using GDAL from a buffer, and returns a CV2 image.
-        """
-
-        offset = float(getattr(self.context, 'offset', 0.0)) or 0
-
-        mem_map_name = '/vsimem/{}'.format(uuid.uuid4().get_hex())
-        gdal_img = None
-        try:
-            gdal.FileFromMemBuffer(mem_map_name, buffer)
-            gdal_img = gdal.Open(mem_map_name)
-
-            channels = [gdal_img.GetRasterBand(i).ReadAsArray() for i in range(1, gdal_img.RasterCount + 1)]
-
-            if len(channels) >= 3:  # opencv is bgr not rgb.
-                red_channel = channels[0]
-                channels[0] = channels[2]
-
-                # Offset is z-offset to the elevation value
-                # If it's set, we are reading a DEM tiff, which stores its elevation data in channels[2]
-                # We don't want to add an offset to a no-data value
-                no_data_value = None if not offset else gdal_img.GetRasterBand(1).GetNoDataValue()
-                add_offset_if_data = numpy.vectorize(
-                    lambda x: x + offset if offset and x != no_data_value else x, otypes=[numpy.float32])
-                # If there's an offset, run add_offset_if_data on numpy array, else just assign it to the proper channel
-                channels[2] = add_offset_if_data(red_channel) if offset else red_channel
-
-            if len(channels) < 4 and create_alpha:
-                self.no_data_value = gdal_img.GetRasterBand(1).GetNoDataValue()
-                channels.append(numpy.float32(gdal_img.GetRasterBand(1).GetMaskBand().ReadAsArray()))
-
-            return cv.fromarray(cv2.merge(channels))
-        finally:
-            gdal_img = None
-            gdal.Unlink(mem_map_name)  # Cleanup.
-
-    def read_vsimem(self, fn):
-        """Read GDAL vsimem files"""
-        vsifile = None
-        try:
-            vsifile = gdal.VSIFOpenL(fn, 'r')
-            gdal.VSIFSeekL(vsifile, 0, 2)
-            vsileng = gdal.VSIFTellL(vsifile)
-            gdal.VSIFSeekL(vsifile, 0, 0)
-            return gdal.VSIFReadL(1, vsileng, vsifile)
-        finally:
-            if vsifile:
-                gdal.VSIFCloseL(vsifile)
-
-    def write_channels_to_tiff_buffer(self, channels):
-        """
-        Writes tiff channels to buffer to be returned to user.
-
-        IMPORTANT NOTE:
-        This method will be called by the engine if one or both of the following filters are set:
-         * format(tiff)
-         * band_selector(n)
-
-        If the band_selector filter has been used, a 32-bit tiff will be returned, and it will only include the
-        specified band.
-
-        Otherwise, an 8-bit tiff will be returned.
-
-        Because of this logic, we are assuming that a user is requesting a DEM tiff if they use the
-        band_selector filter to select a single tiff channel. In the future, we may want to change our code to require
-        users to indicate whether they are requesting a DEM or an orthomosaic, since DEMs can include information on
-        more than one channel. Currently, if a user requests a DEM and specifies the format(tiff) filter, they will
-        receive an 8-bit DEM, which will have truncated values over 256 (which can be particularly problematic
-        with elevations). The only internal code that is requesting DEMs is the exporter, but it won't run into the
-        8-bit truncation issue because it is specifying format(tiff) and band_selector(0).
-
-        Args:
-            channels: tiff channels.
-
-        Returns:
-            gdal image buffer containing data in channels.
-
-        """
-
-        mem_map_name = '/vsimem/{}.tiff'.format(uuid.uuid4().get_hex())
-        driver = gdal.GetDriverByName('GTiff')
-        w, h = channels[0].shape
-        gdal_img = None
-        try:
-            if len(channels) == 1:
-                # DEM Tiff (32 bit floating point single channel)
-                gdal_img = driver.Create(mem_map_name, w, h, len(channels), gdal.GDT_Float32)
-                outband = gdal_img.GetRasterBand(1)
-                outband.WriteArray(channels[0], 0, 0)
-                outband.SetNoDataValue(-32767)
-                outband.FlushCache()
-                outband = None
-                gdal_img.FlushCache()
-
-                self.set_geo_info(gdal_img)
-                return self.read_vsimem(mem_map_name)
-            elif len(channels) == 4:
-                # BGRA 8 bit unsigned int.
-                gdal_img = driver.Create(mem_map_name, h, w, len(channels), gdal.GDT_Byte)
-                band_order = [2, 1, 0, 3]
-                img_bands = [gdal_img.GetRasterBand(i) for i in range(1, 5)]
-                for outband, band_i in zip(img_bands, band_order):
-                    outband.WriteArray(channels[band_i], 0, 0)
-                    outband.SetNoDataValue(-32767)
-                    outband.FlushCache()
-                    del outband
-                del img_bands
-
-                self.set_geo_info(gdal_img)
-                return self.read_vsimem(mem_map_name)
-        finally:
-            del gdal_img
-            gdal.Unlink(mem_map_name)  # Cleanup.
-
-    def set_geo_info(self, gdal_img):
-        """ Set the georeferencing information for the given gdal image.
-        """
-        if hasattr(self.context.request, 'geo_info'):
-            geo = self.context.request.geo_info
-            gdal_img.SetGeoTransform([geo['upper_left_x'], geo['resx'], 0, geo['upper_left_y'], 0, -geo['resy']])
-
-        # Set projection
-        srs = osr.SpatialReference()
-        srs.ImportFromEPSG(3857)
-        gdal_img.SetProjection(srs.ExportToWkt())
-        gdal_img.FlushCache()
-        del srs
-
     @property
     def size(self):
         return cv.GetSize(self.image)
@@ -269,18 +114,6 @@ class Engine(BaseEngine):
         x1, y1 = left, top
         x2, y2 = right, bottom
         self.image = self.image[y1:y2, x1:x2]
-
-    def image_data_as_rgb(self, update_image=True):
-        if self.image.channels == 4:
-            mode = 'BGRA'
-        elif self.image.channels == 3:
-            mode = 'BGR'
-        else:
-            raise NotImplementedError("Only support fetching image data as RGB for 3/4 channel images")
-        return mode, self.image.tostring()
-
-    def set_image_data(self, data):
-        cv.SetData(self.image, data)
 
     def rotate(self, degrees):
         """ rotates the image by specified number of degrees.
@@ -331,13 +164,48 @@ class Engine(BaseEngine):
         image = numpy.asarray(self.image)
         self.image = cv.fromarray(cv2.flip(image, 1))
 
-    def _get_exif_segment(self):
-        """ Override because the superclass doesn't check for no exif.
-        """
-        segment = None
-        try:
-            if getattr(self, 'exif', None) is not None:
-                segment = ExifSegment(None, None, self.exif, 'ro')
-        except Exception:
-            logger.warning('Ignored error handling exif for reorientation', exc_info=True)
-        return segment
+    def read(self, extension=None, quality=None):
+        if not extension and FORMATS[self.extension] == 'TIFF':
+            # If the image loaded was a tiff, return the buffer created earlier.
+            return self.buffer
+        else:
+            if quality is None:
+                quality = self.context.config.QUALITY
+            options = None
+            self.extension = extension or self.extension
+
+            try:
+                if FORMATS[self.extension] == 'JPEG':
+                    options = [cv2.IMWRITE_JPEG_QUALITY, quality]
+            except KeyError:
+                options = [cv2.IMWRITE_JPEG_QUALITY, quality]
+
+            if FORMATS[self.extension] == 'TIFF':
+                channels = cv2.split(numpy.asarray(self.image))
+                data = self.write_channels_to_tiff_buffer(channels)
+            else:
+                success, numpy_data = cv2.imencode(self.extension, numpy.asarray(self.image), options or [])
+                if success:
+                    data = numpy_data.tostring()
+                else:
+                    raise Exception("Failed to encode image")
+
+            if FORMATS[self.extension] == 'JPEG' and self.context.config.PRESERVE_EXIF_INFO:
+                if hasattr(self, 'exif'):
+                    img = JpegFile.fromString(data)
+                    img._segments.insert(0, ExifSegment(self.exif_marker, None, self.exif, 'rw'))
+                    data = img.writeString()
+
+        return data
+
+    def set_image_data(self, data):
+        cv.SetData(self.image, data)
+
+    def image_data_as_rgb(self, update_image=True):
+        if self.image.channels == 4:
+            mode = 'BGRA'
+        elif self.image.channels == 3:
+            mode = 'BGR'
+        else:
+            raise NotImplementedError("Only support fetching image data as RGB for 3/4 channel images")
+        return mode, self.image.tostring()

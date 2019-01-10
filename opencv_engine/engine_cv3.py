@@ -12,6 +12,8 @@ from colour import Color
 from thumbor.engines import BaseEngine
 from pexif import JpegFile, ExifSegment
 
+from opencv_engine.tiff_support import TiffMixin, TIFF_FORMATS
+
 try:
     from thumbor.ext.filters import _composite
     FILTERS_AVAILABLE = True
@@ -26,8 +28,10 @@ FORMATS = {
     '.webp': 'WEBP'
 }
 
+FORMATS.update(TIFF_FORMATS)
 
-class Engine(BaseEngine):
+
+class Engine(BaseEngine, TiffMixin):
     @property
     def image_depth(self):
         if self.image is None:
@@ -64,7 +68,9 @@ class Engine(BaseEngine):
         img[:] = color
         return img
 
-    def create_image(self, buffer):
+    def create_image(self, buffer, create_alpha=True):
+        self.extension = self.extension or '.tif'
+        self.no_data_value = None
         # FIXME: opencv doesn't support gifs, even worse, the library
         # segfaults when trying to decoding a gif. An exception is a
         # less drastic measure.
@@ -74,7 +80,12 @@ class Engine(BaseEngine):
         except KeyError:
             pass
 
-        img = cv2.imdecode(np.frombuffer(buffer, np.uint8), -1)
+        if FORMATS[self.extension] == 'TIFF':
+            self.buffer = buffer
+            img = self.read_tiff(buffer, create_alpha)
+        else:
+            img = cv2.imdecode(np.frombuffer(buffer, np.uint8), -1)
+
         if FORMATS[self.extension] == 'JPEG':
             self.exif = None
             try:
@@ -158,8 +169,15 @@ class Engine(BaseEngine):
         except KeyError:
             options = [cv2.IMWRITE_JPEG_QUALITY, quality]
 
-        success, buf = cv2.imencode(extension, self.image, options or [])
-        data = buf.tostring()
+        if FORMATS[self.extension] == 'TIFF':
+            channels = cv2.split(np.asarray(self.image))
+            data = self.write_channels_to_tiff_buffer(channels)
+        else:
+            success, buf = cv2.imencode(extension, self.image, options or [])
+            if success:
+                data = buf.tostring()
+            else:
+                raise Exception("Failed to encode image")
 
         if FORMATS[extension] == 'JPEG' and self.context.config.PRESERVE_EXIF_INFO:
             if hasattr(self, 'exif') and self.exif != None:
