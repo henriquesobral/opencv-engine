@@ -151,6 +151,10 @@ class Engine(BaseEngine, TiffMixin):
         self.image = np.fliplr(self.image)
 
     def read(self, extension=None, quality=None):
+        if not extension and FORMATS[self.extension] == 'TIFF':
+            # If the image loaded was a tiff, return the buffer created earlier.
+           return self.buffer
+
         if quality is None:
             quality = self.context.config.QUALITY
 
@@ -169,7 +173,7 @@ class Engine(BaseEngine, TiffMixin):
         except KeyError:
             options = [cv2.IMWRITE_JPEG_QUALITY, quality]
 
-        if FORMATS[self.extension] == 'TIFF':
+        if FORMATS[extension] == 'TIFF':
             channels = cv2.split(np.asarray(self.image))
             data = self.write_channels_to_tiff_buffer(channels)
         else:
