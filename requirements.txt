@@ -1,0 +1,14 @@
+mock
+pytest
+coverage
+yanc
+colorama
+preggy
+ipdb
+coveralls
+numpy
+colour
+colour
+numpy
+thumbor
+opencv-python
