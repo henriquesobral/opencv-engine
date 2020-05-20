@@ -14,3 +14,4 @@ thumbor
 opencv-python
 pexif
 -e git://github.com/xlshcn/pexif.git#egg=pexif
+gdal
