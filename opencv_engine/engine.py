@@ -199,6 +199,12 @@ class Engine(BaseEngine):
     def read_tiff(self, buffer, create_alpha=True):
         """ Reads image using GDAL from a buffer, and returns a CV2 image.
         """
+
+        if hasattr(self.context, 'offset') and self.context.offset != 0:
+            offset = float(self.context.offset)
+        else:
+            offset = 0
+
         mem_map_name = '/vsimem/{}'.format(uuid.uuid4().get_hex())
         gdal_img = None
         try:
@@ -210,12 +216,12 @@ class Engine(BaseEngine):
             if len(channels) >= 3:  # opencv is bgr not rgb.
                 red_channel = channels[0]
                 channels[0] = channels[2]
-                channels[2] = red_channel
+                channels[2] = red_channel + offset
 
             if len(channels) < 4 and create_alpha:
                 self.no_data_value = gdal_img.GetRasterBand(1).GetNoDataValue()
                 channels.append(numpy.float32(gdal_img.GetRasterBand(1).GetMaskBand().ReadAsArray()))
-            return cv.fromarray(cv2.merge(channels))
+            return cv2.merge(channels)
         finally:
             gdal_img = None
             gdal.Unlink(mem_map_name)  # Cleanup.
