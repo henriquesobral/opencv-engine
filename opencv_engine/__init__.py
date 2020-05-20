@@ -20,7 +20,6 @@ from thumbor.engines import BaseEngine
 
 logger = logging.getLogger(__name__)
 
-
 try:
     from opencv_engine.engine_cv3 import Engine  # NOQA
 except ImportError:
@@ -62,7 +61,6 @@ def _patch_exif():
         return segment
 
     BaseEngine._get_exif_segment = _get_exif_segment
-
 
 _patch_exif()
 _patch_mime_types()

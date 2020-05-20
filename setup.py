@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from setuptools import setup, find_packages
-from opencv_engine import __version__
+# from opencv_engine import __version__
 
 tests_require = [
     'mock',
