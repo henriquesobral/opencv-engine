@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+__version__ = '1.0.2'
+
 import logging
 
 from pexif import ExifSegment
 from thumbor.engines import BaseEngine
-
-__version__ = '1.0.2'
 
 logger = logging.getLogger(__name__)
 
