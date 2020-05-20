@@ -20,7 +20,7 @@ tests_require = [
 
 setup(
     name='opencv_engine',
-    version='1.0.2,
+    version='1.0.2',
     description='OpenCV imaging engine for thumbor.',
     long_description='''
 OpenCV imaging engine for thumbor.
