@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-__version__ = '1.0.2'
+from pkg_resources import get_distribution
+
+__version__ = get_distribution('opencv_engine').version
 
 import logging
 
