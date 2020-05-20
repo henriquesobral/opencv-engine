@@ -7,16 +7,18 @@
 # Licensed under the MIT license:
 # http://www.opensource.org/licenses/mit-license
 # Copyright (c) 2014 globo.com timehome@corp.globo.com
+from opencv_engine.tiff_support import TiffMixin, TIFF_FORMATS
 
-import uuid
 try:
     import cv
 except ImportError:
     import cv2.cv2 as cv
 
 from colour import Color
+
 from thumbor.engines import BaseEngine
 from pexif import JpegFile, ExifSegment
+<<<<<<< HEAD
 from types import MethodType
 import cv2
 import gdal
@@ -65,6 +67,8 @@ def new_mime(buffer):
     return mime
 
 BaseEngine.get_mimetype = staticmethod(new_mime)
+=======
+>>>>>>> 6a06379c82969b0d989b56b6d46d66930aa1f2a3
 
 try:
     from thumbor.ext.filters import _composite
@@ -78,6 +82,7 @@ FORMATS = {
     '.jpeg': 'JPEG',
     '.JPEG': 'JPEG',
     '.gif': 'GIF',
+<<<<<<< HEAD
     '.GIF': 'GIF',
     '.png': 'PNG',
     '.PNG': 'PNG',
@@ -85,10 +90,15 @@ FORMATS = {
     '.TIFF': 'TIFF',
     '.tif': 'TIFF',
     '.TIF': 'TIFF',
+=======
+    '.png': 'PNG'
+>>>>>>> 6a06379c82969b0d989b56b6d46d66930aa1f2a3
 }
 
+FORMATS.update(TIFF_FORMATS)
 
-class Engine(BaseEngine):
+
+class Engine(BaseEngine, TiffMixin):
 
     @property
     def image_depth(self):
@@ -121,6 +131,7 @@ class Engine(BaseEngine):
         cv.Set(img0, color)
         return img0
 
+<<<<<<< HEAD
     def read(self, extension=None, quality=None):
         if not extension and FORMATS[self.extension] == 'TIFF':
             # If the image loaded was a tiff, return the buffer created earlier.
@@ -166,6 +177,8 @@ class Engine(BaseEngine):
 
         return data
 
+=======
+>>>>>>> 6a06379c82969b0d989b56b6d46d66930aa1f2a3
     def create_image(self, buffer, create_alpha=True):
         self.extension = self.extension or '.tif'
         self.no_data_value = None
@@ -194,8 +207,8 @@ class Engine(BaseEngine):
                     self.exif_marker = info.marker
             except Exception:
                 pass
-        return img0
 
+<<<<<<< HEAD
     def read_tiff(self, buffer, create_alpha=True):
         """ Reads image using GDAL from a buffer, and returns a CV2 image.
         """
@@ -288,6 +301,9 @@ class Engine(BaseEngine):
         gdal_img.SetProjection(srs.ExportToWkt())
         gdal_img.FlushCache()
         del srs
+=======
+        return img0
+>>>>>>> 6a06379c82969b0d989b56b6d46d66930aa1f2a3
 
     @property
     def size(self):
@@ -297,108 +313,105 @@ class Engine(BaseEngine):
         pass
 
     def resize(self, width, height):
-        thumbnail = cv.CreateImage(
-            (int(round(width, 0)), int(round(height, 0))),
-            self.image_depth,
-            self.image_channels
-        )
-        cv.Resize(self.image, thumbnail, cv.CV_INTER_AREA)
-        self.image = thumbnail
+        dims = (int(round(width, 0)), int(round(height, 0)))
+        self.image = cv2.resize(numpy.asarray(self.image), dims, interpolation=cv2.INTER_CUBIC)
 
     def crop(self, left, top, right, bottom):
-        new_width = right - left
-        new_height = bottom - top
-        cropped = cv.CreateImage(
-            (new_width, new_height), self.image_depth, self.image_channels
-        )
-        src_region = cv.GetSubRect(self.image, (left, top, new_width, new_height))
-        cv.Copy(src_region, cropped)
-
-        self.image = cropped
+        x1, y1 = left, top
+        x2, y2 = right, bottom
+        self.image = self.image[y1:y2, x1:x2]
 
     def rotate(self, degrees):
-        if (degrees > 180):
-            # Flip around both axes
-            cv.Flip(self.image, None, -1)
-            degrees = degrees - 180
+        """ rotates the image by specified number of degrees.
+            Uses more effecient flip and transpose for multiples of 90
 
-        img = self.image
-        size = cv.GetSize(img)
-
-        if (degrees / 90 % 2):
-            new_size = (size[1], size[0])
-            center = ((size[0] - 1) * 0.5, (size[0] - 1) * 0.5)
+            Args:
+                degrees - degrees to rotate image by (CCW)
+        """
+        image = numpy.asarray(self.image)
+        # number passed to flip corresponds to rotation about: (0) x-axis, (1) y-axis, (-1) both axes
+        if degrees == 270:
+            transposed = cv2.transpose(image)
+            rotated = cv2.flip(transposed, 1)
+        elif degrees == 180:
+            rotated = cv2.flip(image, -1)
+        elif degrees == 90:
+            transposed = cv2.transpose(image)
+            rotated = cv2.flip(transposed, 0)
         else:
-            new_size = size
-            center = ((size[0] - 1) * 0.5, (size[1] - 1) * 0.5)
+            rotated = self._rotate(image, degrees)
 
-        mapMatrix = cv.CreateMat(2, 3, cv.CV_64F)
-        cv.GetRotationMatrix2D(center, degrees, 1.0, mapMatrix)
-        dst = cv.CreateImage(new_size, self.image_depth, self.image_channels)
-        cv.SetZero(dst)
-        cv.WarpAffine(img, dst, mapMatrix)
-        self.image = dst
+        self.image = cv.fromarray(rotated)
+
+    def _rotate(self, image, degrees):
+        """ rotate an image about it's center by an arbitrary number of degrees
+
+            Args:
+                image - image to rotate (CvMat array)
+                degrees - number of degrees to rotate by (CCW)
+
+            Returns:
+                rotated image (numpy array)
+        """
+        (h, w) = image.shape[:2]
+        center = (w / 2, h / 2)
+
+        M = cv2.getRotationMatrix2D(center, degrees, 1.0)
+        rotated = cv2.warpAffine(image, M, (w, h))
+        return rotated
 
     def flip_vertically(self):
-        cv.Flip(self.image, None, 1)
+        """ flip an image vertically (about x-axis) """
+        image = numpy.asarray(self.image)
+        self.image = cv.fromarray(cv2.flip(image, 0))
 
     def flip_horizontally(self):
-        cv.Flip(self.image, None, 0)
+        """ flip an image horizontally (about y-axis) """
+        image = numpy.asarray(self.image)
+        self.image = cv.fromarray(cv2.flip(image, 1))
+
+    def read(self, extension=None, quality=None):
+        if not extension and FORMATS[self.extension] == 'TIFF':
+            # If the image loaded was a tiff, return the buffer created earlier.
+            return self.buffer
+        else:
+            if quality is None:
+                quality = self.context.config.QUALITY
+            options = None
+            self.extension = extension or self.extension
+
+            try:
+                if FORMATS[self.extension] == 'JPEG':
+                    options = [cv2.IMWRITE_JPEG_QUALITY, quality]
+            except KeyError:
+                options = [cv2.IMWRITE_JPEG_QUALITY, quality]
+
+            if FORMATS[self.extension] == 'TIFF':
+                channels = cv2.split(numpy.asarray(self.image))
+                data = self.write_channels_to_tiff_buffer(channels)
+            else:
+                success, numpy_data = cv2.imencode(self.extension, numpy.asarray(self.image), options or [])
+                if success:
+                    data = numpy_data.tostring()
+                else:
+                    raise Exception("Failed to encode image")
+
+            if FORMATS[self.extension] == 'JPEG' and self.context.config.PRESERVE_EXIF_INFO:
+                if hasattr(self, 'exif'):
+                    img = JpegFile.fromString(data)
+                    img._segments.insert(0, ExifSegment(self.exif_marker, None, self.exif, 'rw'))
+                    data = img.writeString()
+
+        return data
 
     def set_image_data(self, data):
         cv.SetData(self.image, data)
 
     def image_data_as_rgb(self, update_image=True):
-        # TODO: Handle other formats
-        if self.image_channels == 4:
+        if self.image.channels == 4:
             mode = 'BGRA'
-        elif self.image_channels == 3:
+        elif self.image.channels == 3:
             mode = 'BGR'
         else:
-            mode = 'BGR'
-            rgb_copy = cv.CreateImage((self.image.width, self.image.height), 8, 3)
-            cv.CvtColor(self.image, rgb_copy, cv.CV_GRAY2BGR)
-            self.image = rgb_copy
+            raise NotImplementedError("Only support fetching image data as RGB for 3/4 channel images")
         return mode, self.image.tostring()
-
-    def draw_rectangle(self, x, y, width, height):
-        cv.Rectangle(self.image, (int(x), int(y)), (int(x + width), int(y + height)), cv.Scalar(255, 255, 255, 1.0))
-
-    def convert_to_grayscale(self):
-        if self.image_channels >= 3:
-            # FIXME: OpenCV does not support grayscale with alpha channel?
-            grayscaled = cv.CreateImage((self.image.width, self.image.height), self.image_depth, 1)
-            cv.CvtColor(self.image, grayscaled, cv.CV_BGRA2GRAY)
-            self.image = grayscaled
-
-    def paste(self, other_engine, pos, merge=True):
-        if merge and not FILTERS_AVAILABLE:
-            raise RuntimeError(
-                'You need filters enabled to use paste with merge. Please reinstall ' +
-                'thumbor with proper compilation of its filters.')
-
-        self.enable_alpha()
-        other_engine.enable_alpha()
-
-        sz = self.size
-        other_size = other_engine.size
-
-        mode, data = self.image_data_as_rgb()
-        other_mode, other_data = other_engine.image_data_as_rgb()
-
-        imgdata = _composite.apply(
-            mode, data, sz[0], sz[1],
-            other_data, other_size[0], other_size[1], pos[0], pos[1], merge)
-
-        self.set_image_data(imgdata)
-
-    def enable_alpha(self):
-        if self.image_channels < 4:
-            with_alpha = cv.CreateImage(
-                (self.image.width, self.image.height), self.image_depth, 4
-            )
-            if self.image_channels == 3:
-                cv.CvtColor(self.image, with_alpha, cv.CV_BGR2BGRA)
-            else:
-                cv.CvtColor(self.image, with_alpha, cv.CV_GRAY2BGRA)
-            self.image = with_alpha
