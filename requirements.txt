@@ -12,3 +12,4 @@ colour
 numpy
 thumbor
 opencv-python
+pexif
