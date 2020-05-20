@@ -1,9 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from pkg_resources import get_distribution
+from pkg_resources import get_distribution, DistributionNotFound
 
-__version__ = get_distribution('opencv_engine').version
+__project__ = 'opencv_engine'
+__version__ = None  # required for initial installation
+
+try:
+    __version__ = get_distribution(__project__).version
+except DistributionNotFound:
+    VERSION = __project__ + '-' + '(local)'
+else:
+    VERSION = __project__ + '-' + __version__
 
 import logging
 
