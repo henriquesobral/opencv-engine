@@ -15,7 +15,7 @@ tests_require = [
     'coveralls',
     'numpy',
     'colour',
-    'pexif==0.15',
+    'pexif',
     'gdal',
 ]
 
@@ -40,17 +40,17 @@ OpenCV imaging engine for thumbor.
         'Operating System :: POSIX',
         'Operating System :: Unix',
         'Operating System :: OS Independent',
-        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3.7',
     ],
     packages=find_packages(),
     include_package_data=True,
-    dependency_links=['http://github.com/xlshcn/pexif/tarball/master#egg=pexif-0.15'],
+    dependency_links=['http://github.com/xlshcn/pexif/tarball/master#egg=pexif'],
     install_requires=[
         'colour',
         'numpy',
         'thumbor',
         'opencv-python',
-        'pexif==0.15',
+        'pexif',
         'gdal',
     ],
     extras_require={
