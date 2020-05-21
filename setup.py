@@ -16,7 +16,7 @@ tests_require = [
     'numpy',
     'colour',
     'pexif==0.15',
-    'gdal==2.4.2',
+    'gdal',
 ]
 
 setup(
@@ -51,7 +51,7 @@ OpenCV imaging engine for thumbor.
         'thumbor',
         'opencv-python',
         'pexif==0.15',
-        'gdal==2.4.2',
+        'gdal',
     ],
     extras_require={
         'tests': tests_require,
