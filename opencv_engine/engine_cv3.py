@@ -176,7 +176,7 @@ class Engine(BaseEngine, TiffMixin):
         if FORMATS[extension] == 'TIFF':
             # channels = cv2.split(np.asarray(self.image))
             data = self.write_channels_to_tiff_buffer(self.image)
-            self.image = cv2.merge(data)
+            # self.image = cv2.merge(data)
         else:
             try:
                 success, buf = cv2.imencode(extension, self.image, options or [])
