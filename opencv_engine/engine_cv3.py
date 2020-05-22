@@ -174,10 +174,14 @@ class Engine(BaseEngine, TiffMixin):
             options = [cv2.IMWRITE_JPEG_QUALITY, quality]
 
         if FORMATS[extension] == 'TIFF':
-            channels = cv2.split(np.asarray(self.image))
-            data = self.write_channels_to_tiff_buffer(channels)
+            # channels = cv2.split(np.asarray(self.image))
+            data = self.write_channels_to_tiff_buffer(self.image)
+            self.image = cv2.merge(data)
         else:
-            success, buf = cv2.imencode(extension, self.image, options or [])
+            try:
+                success, buf = cv2.imencode(extension, self.image, options or [])
+            except:
+                success, buf = cv2.imencode(extension, cv2.merge(self.image), options or [])
             if success:
                 data = buf.tostring()
             else:
