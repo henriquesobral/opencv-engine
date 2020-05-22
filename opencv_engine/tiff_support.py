@@ -23,7 +23,7 @@ class TiffMixin(object):
 
         offset = float(getattr(self.context, 'offset', 0.0)) or 0
 
-        mem_map_name = '/vsimem/{}'.format(uuid.uuid4().get_hex())
+        mem_map_name = '/vsimem/{}'.format(uuid.uuid4().hex)
         gdal_img = None
         try:
             gdal.FileFromMemBuffer(mem_map_name, buffer)
