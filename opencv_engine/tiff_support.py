@@ -96,7 +96,7 @@ class TiffMixin(object):
 
         """
 
-        mem_map_name = '/vsimem/{}.tiff'.format(uuid.uuid4().get_hex())
+        mem_map_name = '/vsimem/{}.tiff'.format(uuid.uuid4().hex)
         driver = gdal.GetDriverByName('GTiff')
         w, h = channels[0].shape
         gdal_img = None
