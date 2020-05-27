@@ -258,3 +258,13 @@ class Engine(BaseEngine, TiffMixin):
             else:
                 cv2.cvtColor(self.image, cv2.COLOR_GRAY2BGRA, with_alpha)
             self.image = with_alpha
+
+    def has_transparency(self):
+        return np.amin(self.image.transpose(2, 0, 1)[3]) < 255
+        # has_transparency = 'A' in self.image.mode or 'transparency' in self.image.info
+        # if has_transparency:
+        #     # If the image has alpha channel,
+        #     # we check for any pixels that are not opaque (255)
+        #     has_transparency = min(self.image.convert(
+        #         'RGBA').getchannel('A').getextrema()) < 255
+        # return has_transparency
